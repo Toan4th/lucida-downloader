@@ -163,14 +163,25 @@ async fn resolve_album(
         }
     };
 
-    Some(
-        json5::from_str(text_utils::parse_enclosed_value(
+    let json_str = text_utils::parse_enclosed_value(
             ",{\"type\":\"data\",\"data\":",
             ",\"uses\":{\"url\":1}}];\n",
             &html,
-        ))
-        .unwrap(),
-    )
+        );
+
+    match json5::from_str(json_str) {
+        Ok(page_data) => Some(page_data),
+        Err(e) => {
+            if e.to_string().contains("amazon") {
+                eprintln!("[WORKER {album_worker}] Amazon Music is not supported by lucida.to");
+                eprintln!("[WORKER {album_worker}] Please use Qobuz (play.qobuz.com) or Tidal (tidal.com) URLs");
+                eprintln!("[WORKER {album_worker}] Amazon Music URLs are not compatible with this service");
+            } else {
+                eprintln!("[WORKER {album_worker}] Error parsing lucida.to response: {}", e);
+            }
+            None
+        }
+    }
 }
 
 #[expect(
@@ -320,6 +331,10 @@ pub async fn download_album_cover(
             Cow::Owned(format!("{}org.jpg", &url[..end_index]))
         }
         Service::Tidal => Cow::Borrowed(url),
+        Service::Amazon => {
+            eprintln!("[WORKER {album_worker}] Amazon Music is not supported for cover downloads");
+            return;
+        }
     };
 
     let part_path = album_path.join("cover.jpg.part");

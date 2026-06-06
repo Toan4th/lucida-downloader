@@ -40,6 +40,11 @@ pub async fn resolve_album(
             status.as_u16()
         );
 
+        if status == StatusCode::FORBIDDEN {
+            eprintln!("[WORKER {album_worker}] Cloudflare 403 error from lucida.to");
+            eprintln!("  Run 'lucida --fetch-cf <urls>' to automatically get a fresh clearance cookie");
+        }
+
         if !running.load(Ordering::Relaxed) {
             return None;
         }

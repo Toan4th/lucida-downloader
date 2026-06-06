@@ -74,6 +74,34 @@ pub struct Cli {
     /// the User-Agent header to use
     #[arg(long)]
     pub user_agent: Option<String>,
+
+    /// show current configuration settings
+    #[arg(long)]
+    pub config: bool,
+
+    /// update default output directory
+    #[arg(long)]
+    pub set_output: Option<PathBuf>,
+
+    /// update User-Agent header
+    #[arg(long)]
+    pub set_user_agent: Option<String>,
+
+    /// update Cloudflare clearance cookie
+    #[arg(long)]
+    pub update_cf: Option<String>,
+
+    /// automatically fetch cf-clearance cookie using browser automation for lucida.to
+    #[arg(long)]
+    pub fetch_cf: bool,
+
+    /// force refresh cf-clearance even if existing is valid
+    #[arg(long)]
+    pub refresh_cf: bool,
+
+    /// run interactive first-time setup
+    #[arg(long)]
+    pub setup: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -241,6 +269,7 @@ pub struct Album {
 pub enum Service {
     Qobuz,
     Tidal,
+    Amazon,
 }
 
 #[expect(clippy::struct_excessive_bools)]
