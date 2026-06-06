@@ -139,7 +139,7 @@ pub async fn track_download_status(
             status.as_u16()
         );
 
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
+        if status == StatusCode::INTERNAL_SERVER_ERROR || status == StatusCode::NOT_FOUND {
             break None;
         }
 
@@ -198,7 +198,7 @@ pub async fn download_track(
             status.as_u16()
         );
 
-        if status == StatusCode::INTERNAL_SERVER_ERROR {
+        if status == StatusCode::INTERNAL_SERVER_ERROR || status == StatusCode::NOT_FOUND {
             break None;
         }
 
