@@ -82,7 +82,14 @@ pub async fn download_album(
         album_path
     };
 
-    fs::create_dir_all(&album_path).unwrap();
+    if let Err(e) = fs::create_dir_all(&album_path) {
+        eprintln!(
+            "[WORKER {album_worker}] error: failed to create directory {}: {}",
+            album_path.display(),
+            e
+        );
+        return;
+    }
 
     let tracks_len = album.tracks.len();
     let tracks = Arc::new(Mutex::new(album.tracks));
