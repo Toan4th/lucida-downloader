@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use clap::Parser;
 use dialoguer::{Input, Confirm};
@@ -20,6 +21,7 @@ mod requests;
 mod text_utils;
 mod ui;
 mod workers;
+mod tui;
 
 use config::{load_config, save_config, display_config, merge_cli_with_config, get_cloudflare_headers, Config, invalidate_existing_cookies, save_fetched_cookie};
 use ui::DownloadProgress;
@@ -28,6 +30,12 @@ use ui::DownloadProgress;
 async fn main() {
     let cli = Cli::parse();
     let mut config = load_config();
+
+    // Check if we should boot into TUI mode (no arguments, urls, or options)
+    if cli.is_empty() {
+        tui::run_tui(&mut config).await;
+        return;
+    }
 
     // Handle configuration and setup commands first
     if cli.config {
@@ -40,16 +48,22 @@ async fn main() {
         return;
     }
 
-    if cli.set_output.is_some() || cli.set_user_agent.is_some() || cli.update_cf.is_some() {
-        handle_config_updates(&cli, &mut config);
+    if let Some(ref set_expr) = cli.set {
+        match config::update_config_value(&mut config, set_expr) {
+            Ok(()) => {
+                let _ = save_config(&config);
+                println!("✓ Configuration updated successfully.");
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+            }
+        }
         return;
     }
 
     // Handle cf-clearance fetching
-    if cli.fetch_cf || cli.refresh_cf {
-        if cli.refresh_cf {
-            invalidate_existing_cookies(&mut config);
-        }
+    if cli.fetch_cf {
+        invalidate_existing_cookies(&mut config);
         
         println!("Starting cf-clearance fetch process for lucida.to...");
         match cf_fetcher::fetch_cf_clearance_with_retry().await {
@@ -89,7 +103,7 @@ async fn main() {
     let ui = DownloadProgress::new(config.ui.show_progress, config.ui.colored_output);
     ui.print_info(&format!("Downloading {} albums", urls_len));
 
-    let (cf_clearance, user_agent) = if cli.fetch_cf || cli.refresh_cf {
+    let (cf_clearance, user_agent) = if cli.fetch_cf {
         // After fetch, use the newly saved cookie
         (config.cloudflare.cf_clearance.clone(), config.cloudflare.user_agent.clone())
     } else if config.cloudflare.cf_clearance_valid.unwrap_or(false) {
@@ -122,6 +136,28 @@ async fn main() {
     };
 
     let output = output_path.unwrap_or_else(|| env::current_dir().unwrap());
+
+    // Auto-mount network share if output path is not found
+    if !output.exists() {
+        if let Some(ref mount_url) = config.download.mount_url {
+            if try_mount_share(mount_url) {
+                // Poll output directory for up to 5 seconds
+                for _ in 0..10 {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    if output.exists() {
+                        ui.print_success("✓ Output directory is now accessible.");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if !output.exists() {
+        ui.print_error(&format!("Error: Output directory {} is not accessible.", output.display()));
+        return;
+    }
+
     ui.print_info(&format!("Output directory: {}", output.display()));
 
     let urls = Arc::new(Mutex::new(urls));
@@ -162,6 +198,30 @@ async fn main() {
     }
 
     ui.print_success("Download finished!");
+}
+
+pub fn try_mount_share(mount_url: &str) -> bool {
+    println!("Output directory not found. Attempting to mount network share: {} ...", mount_url);
+    let status = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(format!("mount volume \"{}\"", mount_url))
+        .status();
+    
+    match status {
+        Ok(status) => {
+            if status.success() {
+                println!("✓ Successfully requested mount of network share.");
+                true
+            } else {
+                eprintln!("✗ Failed to mount network share (osascript exited with error).");
+                false
+            }
+        }
+        Err(e) => {
+            eprintln!("✗ Failed to execute mount command: {}", e);
+            false
+        }
+    }
 }
 
 async fn run_interactive_setup(config: &mut Config) {
@@ -217,28 +277,5 @@ async fn run_interactive_setup(config: &mut Config) {
     } else {
         println!("Configuration saved successfully!");
         display_config(config);
-    }
-}
-
-fn handle_config_updates(cli: &Cli, config: &mut Config) {
-    if let Some(output) = &cli.set_output {
-        config.download.default_output = Some(output.clone());
-        println!("Updated default output directory to: {}", output.display());
-    }
-
-    if let Some(user_agent) = &cli.set_user_agent {
-        config.cloudflare.user_agent = Some(user_agent.clone());
-        println!("Updated User-Agent to: {}", user_agent);
-    }
-
-    if let Some(cf_clearance) = &cli.update_cf {
-        config.cloudflare.cf_clearance = Some(cf_clearance.clone());
-        println!("Updated Cloudflare clearance cookie");
-    }
-
-    if let Err(e) = save_config(config) {
-        eprintln!("Error saving configuration: {}", e);
-    } else {
-        println!("Configuration updated successfully!");
     }
 }

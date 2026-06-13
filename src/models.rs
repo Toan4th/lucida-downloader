@@ -7,7 +7,6 @@ use time::OffsetDateTime;
 
 #[expect(clippy::struct_excessive_bools)]
 #[derive(Parser)]
-#[command(arg_required_else_help = true)]
 pub struct Cli {
     /// URLs to download
     pub urls: Vec<String>,
@@ -79,29 +78,42 @@ pub struct Cli {
     #[arg(long)]
     pub config: bool,
 
-    /// update default output directory
+    /// update a configuration setting (KEY=VALUE)
     #[arg(long)]
-    pub set_output: Option<PathBuf>,
-
-    /// update User-Agent header
-    #[arg(long)]
-    pub set_user_agent: Option<String>,
-
-    /// update Cloudflare clearance cookie
-    #[arg(long)]
-    pub update_cf: Option<String>,
+    pub set: Option<String>,
 
     /// automatically fetch cf-clearance cookie using browser automation for lucida.to
     #[arg(long)]
     pub fetch_cf: bool,
 
-    /// force refresh cf-clearance even if existing is valid
-    #[arg(long)]
-    pub refresh_cf: bool,
-
     /// run interactive first-time setup
     #[arg(long)]
     pub setup: bool,
+}
+
+impl Cli {
+    pub fn is_empty(&self) -> bool {
+        self.urls.is_empty()
+            && self.file.is_empty()
+            && self.output.is_none()
+            && !self.force
+            && !self.group_singles
+            && self.album_year.is_none()
+            && !self.flatten_directories
+            && self.country == "auto"
+            && !self.no_metadata
+            && !self.private
+            && self.album_workers == 1
+            && self.track_workers == 4
+            && !self.skip_tracks
+            && !self.skip_cover
+            && self.cf_clearance.is_none()
+            && self.user_agent.is_none()
+            && !self.config
+            && self.set.is_none()
+            && !self.fetch_cf
+            && !self.setup
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]

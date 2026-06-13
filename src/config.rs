@@ -16,6 +16,7 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadConfigSection {
     pub default_output: Option<PathBuf>,
+    pub mount_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ impl Default for Config {
         Self {
             download: DownloadConfigSection {
                 default_output: None,
+                mount_url: None,
             },
             cloudflare: CloudflareConfig {
                 cf_clearance: None,
@@ -118,6 +120,12 @@ pub fn display_config(config: &Config) {
         println!("Default Output: (not set - uses current directory)");
     }
 
+    if let Some(mount_url) = &config.download.mount_url {
+        println!("Network Share Mount URL: {}", mount_url);
+    } else {
+        println!("Network Share Mount URL: (not set)");
+    }
+
     if let Some(cf_clearance) = &config.cloudflare.cf_clearance {
         println!("Cloudflare Clearance: {}", cf_clearance);
         if config.cloudflare.cf_clearance_valid.unwrap_or(false) {
@@ -141,6 +149,54 @@ pub fn display_config(config: &Config) {
 
     println!("Show Progress: {}", config.ui.show_progress);
     println!("Colored Output: {}", config.ui.colored_output);
+}
+
+pub fn update_config_value(config: &mut Config, set_expr: &str) -> Result<(), String> {
+    let parts: Vec<&str> = set_expr.splitn(2, '=').collect();
+    if parts.len() != 2 {
+        return Err("Invalid format. Use KEY=VALUE".to_string());
+    }
+    
+    let key = parts[0].trim().to_lowercase();
+    let value = parts[1].trim();
+    
+    match key.as_str() {
+        "output" | "default_output" | "default-output" => {
+            config.download.default_output = Some(PathBuf::from(value));
+        }
+        "mount" | "mount_url" | "mount-url" => {
+            config.download.mount_url = Some(value.to_string());
+        }
+        "user_agent" | "user-agent" | "ua" => {
+            config.cloudflare.user_agent = Some(value.to_string());
+        }
+        "cf_clearance" | "cf-clearance" | "cf" => {
+            config.cloudflare.cf_clearance = Some(value.to_string());
+            config.cloudflare.cf_clearance_valid = Some(true);
+            config.cloudflare.cf_clearance_timestamp = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            );
+        }
+        "show_progress" | "show-progress" | "progress" => {
+            let val: bool = value.parse().map_err(|_| "Value must be true or false".to_string())?;
+            config.ui.show_progress = val;
+        }
+        "colored_output" | "colored-output" | "color" => {
+            let val: bool = value.parse().map_err(|_| "Value must be true or false".to_string())?;
+            config.ui.colored_output = val;
+        }
+        _ => {
+            return Err(format!(
+                "Unknown configuration key: '{}'. Supported keys: output, mount, user_agent, cf_clearance, show_progress, colored_output",
+                key
+            ));
+        }
+    }
+    
+    Ok(())
 }
 
 pub fn merge_cli_with_config(cli: &Cli, config: &Config) -> (DownloadConfig, Option<PathBuf>) {
